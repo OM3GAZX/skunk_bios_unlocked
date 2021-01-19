@@ -772,7 +772,7 @@ calc_vals:
 		jmp		finalinit-jcpblock+RAMLOAD	; jump over the reset (embedded subroutine)
 
 .if BIOS_MAJOR_VERSION >= 4
-; Write an EZHost control register (address 0xc000 - 0xcfff)
+; Write an EZHost control register (address 0xc000 - 0xc0ff)
 ;
 ; !!! Must be called in HPI write mode with a5/a3 = HPI write addr/data
 ;
@@ -884,7 +884,7 @@ ezcmdcmn:
 		move.l	(sp)+, d1			; Restore d1
 		rts
 
-; Read an EZHost control register (address 0xc000 - 0xcfff)
+; Read an EZHost control register (address 0xc000 - 0xc0ff)
 ;
 ; !!! Must be called in HPI write mode with a5/a3 = HPI write addr/data
 ;
