@@ -17,6 +17,8 @@
 ;;          - User can select Serial EEPROM 1 by pressing left, EEPROM 2 by
 ;;            pressing right at the boot screen.
 ;;          - Preserve the EEPROM selection across the EZHost reset after flashing.
+;;  v.3.0.3 - Skunk Memory Track BIOS autoboot (Unsupported on startbjl version)
+;;  v.4.0.1 - Skunk Memory Track BIOS autoboot (Unsupported on startbjl version)
 
 		.include	"jaguar.inc"
 		
@@ -112,6 +114,9 @@ calc_vals:
 		move.l	d0, OLP		; not really safe, but works well enough for this
 		move.w	#0, OBF		; in case the OP halted on a GPU interrupt, this should wake it
 		jmp		finalinit	; jump over the reset (embedded subroutine)
+
+doCDboot:
+		dc.w	0
 
 .if BIOS_MAJOR_VERSION >= 4
 ; Write an EZHost control register (address 0xc000 - 0xc0ff)
@@ -371,6 +376,27 @@ finalinit:
 		move.w	#$1000, d2			; Default to the 93C46/128-byte EEPROM on boot
 		jsr		ezreset				; now actually DO that reset
 .donelock:
+		move.w	#$4001, (a5)	; Enter Flash read-only mode (helps us reboot!)
+		cmp.w	#1, doCDboot
+		bne		.normboot
+		move.l	#$802004, a0	; get tokens
+		cmp.l	#'SKNK', (a0)
+		bne		.rtscd
+		cmp.l	#'MTRK', $4(a0)
+		bne		.rtscd
+		move.l	$8(a0), a2
+		cmp.l	#0,a2			; sanity check
+		beq		.rtscd
+		cmp.l	#$ffffffff,a2
+		beq		.rtscd
+
+		; Looks like a Skunk Memory Track BIOS. Spin that shit, DJ!
+		jmp		startcode
+
+.rtscd:
+		rts
+
+.normboot:
 
 ; Check for autoboot (extended BIOS, intended for USB boot)
 ; that code may RTS to come back here if it finds nothing
@@ -381,8 +407,6 @@ finalinit:
 
 		; check on second bank for v2 board
 		move.w  #$4BA1, (a5)	; Destined For BAnk 1!
-
-		move.w	#$4001, (a5)	; Enter Flash read-only mode (helps us reboot!)
 
 		move.l	$BFFFF0,d0		; get token
 		cmp.l	#'LION',d0		; test against keystring
@@ -979,10 +1003,16 @@ oktolaunch:
 		bra skipboot
 
 .jmpout:				
-
-		; now finally do the jump - we JSR to allow the code to return to us
-		; (for JCP utilities mainly), on return we reset the stack (to avoid
-		; leaks) and anything else needed, and jump back up to the wait loop
+		; now finally do the jump - If not booting in CD mode, we JSR to allow
+		; the code to return to us (for JCP utilities mainly). On return we
+		; reset the stack (to avoid leaks) and anything else needed, and jump
+		; back up to the wait loop. If in CD mode, we don't touch the stack and
+		; JMP rather than JSR, allowing the code to return directly to the CD
+		; BIOS if it so chooses.
+		cmp.w	#1, doCDboot
+		bne	.jsrboot
+		jmp	(a2)
+.jsrboot:
 		move.l	#INITSTACK,a7	; Set Atari's default stack
 		jsr (a2)
 

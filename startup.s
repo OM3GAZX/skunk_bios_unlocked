@@ -40,12 +40,13 @@
 ;;          - User can select Serial EEPROM 1 by pressing left, EEPROM 2 by
 ;;            pressing right at the boot screen.
 ;;          - Preserve the EEPROM selection across the EZHost reset after flashing.
+;;  v.3.0.3 - Skunk Memory Track BIOS autoboot
+;;  v.4.0.1 - Skunk Memory Track BIOS autoboot
 ;;
 ;; Testing: (NOTE: this file does not support SBv1!)
 ;;			(NOTE: I don't have SBv1 or SBv2, no testing there)
-;;			(NOTE: I don't have BS roms, so no testing of lockout/recovery)
 ;; Option	SBv3	SBv4	SBv5
-;; reset	ok		ok      ok
+;; reset	ok		ok		ok
 ;; ram		ok		ok		ok
 ;; flash1/2	ok		ok		ok
 ;; flash1/4	ok		ok		ok
@@ -67,22 +68,23 @@
 ;; dump1	ok		ok		ok
 ;; dump2	ok		ok		ok
 ;; serial#	ok		ok		ok
-;; upgrade	na		na      ok
+;; upgrade	ok		ok		ok
 ;; JagCD	ok		ok		ok
-;; BS1		na		na		na
-;; BS1/RAM	na		na		na
-;; BS1/FL2	na		na		na
-;; BS1/up	na		na 		na
-;; BS1/down	na		na 		na
-;; Recover1	na		na 		na
-;; BS2		na		na 		na
-;; BS2/RAM	na		na 		na
-;; BS2/FL1	na		na 		na
-;; BS2/up	na		na 		na
-;; BS2/down	na		na 		na
-;; Recover2	na		na 		na
+;; BS1		ok		ok		ok
+;; BS1/RAM	ok		ok		ok
+;; BS1/FL2	ok		ok		ok
+;; BS1/up	ok		ok		ok
+;; BS1/down	ok		ok		ok
+;; Recover1	ok		ok		ok
+;; BS2		ok		ok		ok
+;; BS2/RAM	ok		ok		ok
+;; BS2/FL1	ok		ok		ok
+;; BS2/up	ok		ok		ok
+;; BS2/down	ok		ok		ok
+;; Recover2	ok		ok		ok
 ;; Autoboot ok		ok		ok
 ;; SkipAuto ok		ok		ok
+;; MemTrack	ok		ok		ok
 ;; jcp...
 ;; -n		ok		ok		ok
 ;; -b		ok		ok		ok
@@ -221,28 +223,28 @@ RAMLOAD	.equ $1400
 ; Checks that the current BIOS matches the known version
 
 .if BIOS_MAJOR_VERSION = 5
-		; Rev 4 board
+		; Rev 4 BIOS, Rev 5 board
 		cmp.l	#$00040000,d1
 		beq		.verok
-		; Rev 5 board
+		; Rev 5 BIOS and board
 		cmp.l	#$00050000,d1
 		beq		.verok
 .endif
 .if BIOS_MAJOR_VERSION = 4
-		; Rev 4 board
+		; Rev 4 BIOS, Rev 5 board
 		cmp.l	#$00040000,d1
 		beq		.verok
 .endif
 .if BIOS_MAJOR_VERSION = 3
-		; Rev 2 board
+		; Rev 2 BIOS and board
 		cmp.l	#$00020000,d1
 		beq		.verok
-		; Rev 3 board
+		; Rev 3 BIOS, Rev 2 or 3 board
 		cmp.l	#$00030000,d1
 		beq		.verok
 .endif
 .if BIOS_MAJOR_VERSION = 1
-		; Rev 1 board
+		; Rev 1 BIOS and board
 		cmp.l	#$00010000,d1
 		beq		.verok
 .endif
@@ -627,10 +629,10 @@ copyblock:
 		dc.l	$00050000			; v5 Skunkboard
 .endif
 .if BIOS_MAJOR_VERSION = 4
-		dc.l	$00040000			; v4,5 Skunkboard
+		dc.l	$00040001			; v5 Skunkboard
 .endif
 .if BIOS_MAJOR_VERSION = 3
-		dc.l	$00030002			; v2,3,4,5 Skunkboard
+		dc.l	$00030003			; v2,3,4,5 Skunkboard
 .endif
 .if BIOS_MAJOR_VERSION = 1
 		dc.l	$00010002			; v1 Skunkboard
@@ -666,10 +668,13 @@ ProgStart:
 jcpblock:
 _copyboot:	move.l	(a0)+, (a1)+		; Finish copying from DRAM
 		dbra	d1, _copyboot
+
+; Get the ROM up to our full supported speed.
+		move.w	#$187b, $f00000		; 16-bit, 6 cycle I/O, 5 cycle ROM
 		
-; before we mess with ANYTHING, check whether we are booting from CD.
+; before we mess with anything else, check whether we are booting from CD.
 ; If we are, see if the user is holding down 'C' for "CD". If they are,
-; we're all set up to return to the CD BIOS.
+; bypass stack+video init and return to the CD BIOS or launch the Memory Track.
 		move.l	$2400, d1				; check for magic number
 		cmp.l	#$12345678,d1			; I know. But that's what it writes. 
 		bne		.noCDmode				; no match means no CD
@@ -680,12 +685,10 @@ _copyboot:	move.l	(a0)+, (a1)+		; Finish copying from DRAM
 		btst	#1,d0			; check 'C' button (0 if pressed)
 		bne		.noCDmode		; go ahead and boot
 		
-		; return to the CD bios
-		rts
+		move.w	#1, doCDboot-jcpblock+RAMLOAD
+		jmp	finalinit-jcpblock+RAMLOAD	; Skip some init. Still reset ezhost.
 
 .noCDmode:
-; Get the ROM up to our full supported speed.
-		move.w	#$187b, $f00000		; 16-bit, 6 cycle I/O, 5 cycle ROM
 
 ; stop the GPU and the DSP
 		move.l	#0,G_CTRL
@@ -770,6 +773,9 @@ calc_vals:
 		move.l	d0, OLP		; not really safe, but works well enough for this
 		move.w	#0, OBF		; in case the OP halted on a GPU interrupt, this should wake it
 		jmp		finalinit-jcpblock+RAMLOAD	; jump over the reset (embedded subroutine)
+
+doCDboot:
+		dc.w	0
 
 .if BIOS_MAJOR_VERSION >= 4
 ; Write an EZHost control register (address 0xc000 - 0xc0ff)
@@ -1029,6 +1035,27 @@ finalinit:
 		move.w	#$1000, d2			; Default to the 93C46/128-byte EEPROM on boot
 		jsr		ezreset-jcpblock+RAMLOAD	; now actually DO that reset
 .donelock:
+		move.w	#$4001, (a5)	; Enter Flash read-only mode (helps us reboot!)
+		cmp.w	#1, doCDboot-jcpblock+RAMLOAD
+		bne		.normboot
+		move.l	#$802004, a0	; get tokens
+		cmp.l	#'SKNK', (a0)
+		bne		.rtscd
+		cmp.l	#'MTRK', $4(a0)
+		bne		.rtscd
+		move.l	$8(a0), a2
+		cmp.l	#0,a2			; sanity check
+		beq		.rtscd
+		cmp.l	#$ffffffff,a2
+		beq		.rtscd
+
+		; Looks like a Skunk Memory Track BIOS. Spin that shit, DJ!
+		jmp		startcode-jcpblock+RAMLOAD
+
+.rtscd:
+		rts
+
+.normboot:
 
 ; Check for autoboot (extended BIOS, intended for USB boot)
 ; that code may RTS to come back here if it finds nothing
@@ -1039,8 +1066,6 @@ finalinit:
 
 		; check on second bank for v2 board
 		move.w  #$4BA1, (a5)	; Destined For BAnk 1!
-
-		move.w	#$4001, (a5)	; Enter Flash read-only mode (helps us reboot!)
 
 		move.l	$BFFFF0,d0		; get token
 		cmp.l	#'LION',d0		; test against keystring
@@ -1716,10 +1741,16 @@ oktolaunch:
 		bra skipboot
 
 .jmpout:				
-
-		; now finally do the jump - we JSR to allow the code to return to us
-		; (for JCP utilities mainly), on return we reset the stack (to avoid
-		; leaks) and anything else needed, and jump back up to the wait loop
+		; now finally do the jump - If not booting in CD mode, we JSR to allow
+		; the code to return to us (for JCP utilities mainly). On return we
+		; reset the stack (to avoid leaks) and anything else needed, and jump
+		; back up to the wait loop. If in CD mode, we don't touch the stack and
+		; JMP rather than JSR, allowing the code to return directly to the CD
+		; BIOS if it so chooses.
+		cmp.w	#1, doCDboot-jcpblock+RAMLOAD
+		bne	.jsrboot
+		jmp	(a2)
+.jsrboot:
 		move.l	#INITSTACK,a7	; Set Atari's default stack
 		jsr (a2)
 
