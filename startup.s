@@ -1453,11 +1453,13 @@ _eraseloop:	jsr 	EraseBlockInA0-jcpblock+RAMLOAD
 		; reset the flash chip to get out of program mode (preserve A2!), but first
 		; read back the current serial EEPROM selection and pass it to the reset
 		; routine in d2.w to preserve it.
+.if BIOS_MAJOR_VERSION >= 4
 		move.w	#$c024, d0		; Read GPIO data register 1 to d0 high word
 		jsr		ezrdctrlreg-jcpblock+RAMLOAD
 		jsr		ezchkctrl-jcpblock+RAMLOAD
 		swap	d0
 		move.w	d0, d2
+.endif ; .if BIOS_MAJOR_VERSION >= 4
 		jsr		ezreset-jcpblock+RAMLOAD	; now actually DO that reset
 
 		; check a2 for return without start flag
