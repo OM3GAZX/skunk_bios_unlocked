@@ -1545,23 +1545,23 @@ startcode:
 		; Note: *MUST* load at $4100 and *MUST* follow this exact format
 		move.l	a2,d0			; get address of exe
 		and.l	#$00FFFFFF,d0	; mask off the control byte
-		cmp		#$4100,d0		; test address of stub
+		cmp		#$ffff,d0		; test address of stub
 		bne		.notstub
 		move.l	a2,a0			; make a copy
-		cmp.w	#$223c,(a0)		; move.l #xxxxxxxx,d1
+		cmp.w	#$ffff,(a0)		; move.l #xxxxxxxx,d1
 		bne		.notstub
 		addq	#6,a0			; skip 32-bit argument
-		cmp.w	#$21c1,(a0)+	; move.l d1,$3ff0
+		cmp.w	#$ffff,(a0)+	; move.l d1,$3ff0
 		bne		.notstub
-		cmp.l	#$3ff00a81,(a0)+ ; rest of move, eor.l #$xxxxxxxx,d1
+		cmp.l	#$ffffffff,(a0)+ ; rest of move, eor.l #$xxxxxxxx,d1
 		bne		.notstub
-		cmp.l	#$0000ffff,(a0)+ ; eor data #$ffff
+		cmp.l	#$ffffffff,(a0)+ ; eor data #$ffff
 		bne		.notstub
-		cmp.l	#$21c13ff4,(a0)+ ; move.l d1,$3ff4
+		cmp.l	#$ffffffff,(a0)+ ; move.l d1,$3ff4
 		bne		.notstub
-		cmp.l	#$22790080,(a0)+ ; move.l $800804,a1
+		cmp.l	#$ffffffff,(a0)+ ; move.l $800804,a1
 		bne		.notstub
-		cmp.l	#$08044ed1,(a0)+ ; rest of move, jmp (a1)
+		cmp.l	#$ffffffff,(a0)+ ; rest of move, jmp (a1)
 		bne		.notstub
 		; it IS the flash stub, so skip over the check
 		
